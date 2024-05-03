@@ -15,7 +15,7 @@ public:
     Any run() {
         std::cout << "tid :" << std::this_thread::get_id() << " begin!" << std::endl;
         uLong sum = 0;
-//        std::this_thread::sleep_for(std::chrono::seconds(3));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
         for (uLong i = begin_; i <= end_; i++) {
             sum += i;
         }
@@ -28,6 +28,19 @@ private:
 };
 
 int main() {
+    {
+        ThreadPool pool;
+        pool.setMode(PoolMode::MODE_CACHED);
+        pool.start(2);
+        Result res1 = pool.submitTask(std::make_shared<MyTask>(0, 1));
+        pool.submitTask(std::make_shared<MyTask>(0, 100000000));
+        pool.submitTask(std::make_shared<MyTask>(0, 100000000));
+        pool.submitTask(std::make_shared<MyTask>(0, 100000000));
+        uLong sum1 = res1.get().cast_<uLong>();
+        std::cout << sum1 << std::endl;
+    }
+    std::cout << "main over" << std::endl;
+#if 0
     {
         ThreadPool pool;
         pool.setMode(PoolMode::MODE_CACHED);
@@ -53,4 +66,5 @@ int main() {
     getchar();
 
     return 0;
+#endif
 }

@@ -25,11 +25,11 @@ ThreadPool::ThreadPool() : initThreadSize_(0),
 ThreadPool::~ThreadPool() {
     isPoolRunning_ = false;
 
-    notEmpty_.notify_all(); // 从等待到阻塞状态
-
     // 等待所有线程返回
     std::unique_lock<std::mutex> lock(taskQueMtx_);
-    exitCond_.wait(lock, [&]() {return threads_.size() == 0;});
+    notEmpty_.notify_all(); // 从等待到阻塞状态，！！在lock之后很重要，防止死锁如果在lock之前，其他线程在这个语句后抢到了锁，进入了notEmpty等待，出现死锁
+    exitCond_.wait(lock, [&]() {return currThreadSize_ == 0;});
+    std::cout<< "无死锁" << std::endl;
 }
 
 void ThreadPool::start(int initThreadSize) {
@@ -118,7 +118,7 @@ void ThreadPool::threadFunc(int threadId) {
             std::unique_lock<std::mutex> lock(taskQueMtx_);
             std::cout << "尝试获取任务" << std::endl;
 
-            while (myTaskQue_.size() == 0) {
+            while (myTaskQue_.size() == 0 && isPoolRunning_) {
                 // cached模式下，可能创建了很多线程
                 // 但是空闲时间超过60s的线程应该被结束回收掉(超过initThreadSize_的线程)
                 // 当前时间 - 上一次执行时间 > 60s
@@ -141,7 +141,7 @@ void ThreadPool::threadFunc(int threadId) {
                             currThreadSize_--;
                             idleThreadSize_--;
 
-                            std::cout << "id :" << std::this_thread::get_id() << " exit!" << std::endl;
+                            std::cout << "[Cached deleted] id :" << std::this_thread::get_id() << " exit!" << std::endl;
                             return;
                         }
                     }
@@ -150,13 +150,20 @@ void ThreadPool::threadFunc(int threadId) {
                     notEmpty_.wait(lock);
                 }
 
-                // 如果是因为线程池结束了，收到了信号，则直接推出
-                if (!isPoolRunning_) {
-                    threads_.erase(threadId);
-                    std::cout << "id :" << std::this_thread::get_id() << " exit!" << std::endl;
-                    exitCond_.notify_all();
-                    return;
-                }
+//                // 如果是因为线程池结束了，收到了信号，则直接推出
+//                if (!isPoolRunning_) {
+//                    threads_.erase(threadId);
+//                    std::cout << "id :" << std::this_thread::get_id() << " exit for end!" << std::endl;
+//                    exitCond_.notify_all();
+//                    return;
+//                }
+            }
+            if (!isPoolRunning_) {
+//                threads_.erase(threadId);
+//                std::cout << "id :" << std::this_thread::get_id() << " exit for end!" << std::endl;
+//                exitCond_.notify_all();
+//                return;
+                break;
             }
 
             // 空闲线程数量减去1
@@ -192,7 +199,9 @@ void ThreadPool::threadFunc(int threadId) {
     }
     // 执行完任务，发现线程池结束了
     threads_.erase(threadId); // 删除对应线程
+    currThreadSize_--;
     std::cout << "id :" << std::this_thread::get_id() << " exit!" << std::endl;
+//    std::cout << "threads size = " << threads_.size() << std::endl;
     exitCond_.notify_all();
 }
 
